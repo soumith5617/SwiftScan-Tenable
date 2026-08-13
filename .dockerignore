@@ -1,0 +1,9 @@
+node_modules
+.output
+.wrangler
+.git
+.gitignore
+.env
+dist
+build
+npm-debug.log

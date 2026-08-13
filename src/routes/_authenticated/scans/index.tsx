@@ -115,13 +115,12 @@ function ScansPage() {
                 <Label htmlFor="target">Target</Label>
                 <Input
                   id="target"
-                  placeholder="example.com or https://app.example.com"
+                  placeholder="192.168.1.1 or 10.0.0.1 or https://app.example.com"
                   value={target}
                   onChange={(e) => setTarget(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Only scan systems you are authorised to test. Private and loopback ranges are
-                  blocked.
+                  Supports IPv4/IPv6 addresses, local subnets, hostnames, and URLs.
                 </p>
               </div>
               <div className="space-y-1.5">

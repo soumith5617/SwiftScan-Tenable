@@ -78,9 +78,9 @@ export const exportScanReport = createServerFn({ method: "POST" })
       epss: f.epss,
       kev: f.kev,
       priority: f.priority,
-      solution: data.includeEvidence ? f.solution : undefined,
-      description: data.includeEvidence ? f.description : undefined,
-      cve_ids: f.cve_ids,
+      solution: data.includeEvidence ? f.solution : null,
+      description: data.includeEvidence ? f.description : null,
+      cve_ids: f.cve_ids ?? [],
       state: f.state,
       due_at: f.due_at,
       asset: f.assets

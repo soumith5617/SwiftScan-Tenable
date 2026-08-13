@@ -10,7 +10,18 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ReportGenerator } from "@/lib/report-generator";
+import { Download, FileDown, FileJson, FileSpreadsheet, FileText, Printer } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/scans/$scanId")({
   head: () => ({
@@ -33,6 +44,18 @@ export const Route = createFileRoute("/_authenticated/scans/$scanId")({
   component: ScanDetail,
 });
 
+function downloadBlob(content: string, mimeType: string, fileName: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function ScanDetail() {
   const { scanId } = Route.useParams();
   const { data } = useQuery({
@@ -45,12 +68,110 @@ function ScanDetail() {
   const scan = data.scan;
   const stats = (scan.stats ?? {}) as Record<string, unknown>;
 
+  const handleExport = (format: "pdf" | "html" | "csv" | "json") => {
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const safeName = (scan.name || "scan-report").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+    if (format === "pdf") {
+      window.print();
+      return;
+    }
+
+    if (format === "html" || format === "csv") {
+      const generated = ReportGenerator.generate({
+        title: scan.name,
+        kind: "technical",
+        format: format,
+        findings: (data.findings ?? []).map((f) => ({
+          id: f.id,
+          severity: f.severity,
+          title: f.title,
+          plugin_id: f.plugin_id,
+          cvss: f.cvss,
+          epss: f.epss,
+          kev: f.kev,
+          priority: f.priority,
+          solution: f.solution,
+          description: f.description,
+          cve_ids: f.cve_ids,
+          state: f.state,
+          due_at: f.due_at,
+          asset: { target: scan.target, name: scan.name },
+        })),
+        assets: [{ id: scan.asset_id ?? "1", name: scan.name, target: scan.target }],
+        scans: [
+          {
+            id: scan.id,
+            name: scan.name,
+            target: scan.target,
+            status: scan.status,
+            created_at: scan.created_at,
+          },
+        ],
+      });
+      downloadBlob(generated.content, generated.mimeType, `${safeName}-${dateStr}.${format}`);
+    } else if (format === "json") {
+      const exportData = {
+        meta: {
+          platform: "AegisScan Enterprise",
+          title: scan.name,
+          exported_at: new Date().toISOString(),
+          scan_id: scan.id,
+          target: scan.target,
+          status: scan.status,
+        },
+        scan,
+        findings: data.findings ?? [],
+        ports: stats["ports"] ?? [],
+        technologies: stats["technologies"] ?? [],
+      };
+      downloadBlob(
+        JSON.stringify(exportData, null, 2),
+        "application/json",
+        `${safeName}-${dateStr}.json`,
+      );
+    }
+  };
+
   return (
     <div>
       <PageHeader
         title={scan.name}
         description={`${scan.target} · template ${scan.template} · ${scan.status}`}
-      />
+      >
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-2">
+              <Download className="size-4" />
+              Export Report
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuLabel>Export Formats</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => handleExport("pdf")} className="gap-2 cursor-pointer">
+              <Printer className="size-4 text-red-500" />
+              <span>PDF / Print</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleExport("html")} className="gap-2 cursor-pointer">
+              <FileText className="size-4 text-sky-500" />
+              <span>Executive HTML</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleExport("csv")} className="gap-2 cursor-pointer">
+              <FileSpreadsheet className="size-4 text-emerald-500" />
+              <span>CSV Spreadsheet</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleExport("json")} className="gap-2 cursor-pointer">
+              <FileJson className="size-4 text-amber-500" />
+              <span>JSON Raw Data</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button variant="secondary" size="sm" onClick={() => window.print()} className="gap-1.5">
+          <Printer className="size-4" />
+          Print
+        </Button>
+      </PageHeader>
 
       {scan.status === "running" && (
         <div className="mb-4 flex items-center gap-3">

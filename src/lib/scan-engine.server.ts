@@ -694,10 +694,11 @@ export async function probePort(
     const net = await import("node:net");
     return await new Promise<DiscoveredPort | null>((resolve) => {
       let settled = false;
+      let grabbedBanner = "";
       const socket = net.createConnection({ host, port, timeout: timeoutMs });
       socket.setTimeout(timeoutMs);
 
-      socket.on("connect", () => {
+      const finish = (bannerText?: string) => {
         if (settled) return;
         settled = true;
         socket.destroy();
@@ -706,8 +707,31 @@ export async function probePort(
           protocol: "tcp",
           state: "open",
           service: info?.service ?? "tcp-service",
-          banner: info?.description,
+          banner: bannerText || grabbedBanner || info?.description || `TCP port ${port} open`,
         });
+      };
+
+      socket.on("data", (chunk: Buffer) => {
+        const text = chunk.toString("utf8").trim().replace(/[\r\n]+/g, " ");
+        if (text) {
+          grabbedBanner = text.slice(0, 200);
+          finish(grabbedBanner);
+        }
+      });
+
+      socket.on("connect", () => {
+        // Send CRLF for protocols that wait for client prompt
+        if ([21, 22, 25, 110, 143, 587].includes(port)) {
+          // Servers send banner first
+          setTimeout(() => finish(), 350);
+        } else {
+          try {
+            socket.write("\r\n");
+          } catch {
+            // ignore
+          }
+          setTimeout(() => finish(), 350);
+        }
       });
 
       socket.on("timeout", () => {
@@ -765,22 +789,19 @@ export interface ProbeResult {
   elapsedMs: number;
 }
 
-const PRIVATE_HOST =
-  /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0|\[?::1\]?|172\.(1[6-9]|2\d|3[01])\.)/i;
-
 export function normalizeTarget(input: string): URL {
   const trimmed = input.trim();
-  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  const url = new URL(withScheme);
-  if (PRIVATE_HOST.test(url.hostname) || url.hostname.endsWith(".internal")) {
-    throw new Error(
-      "Target resolves to a private or loopback address. Scanning internal ranges requires a scan agent.",
-    );
+  // Strip CIDR mask if single target sweep (e.g. 192.168.1.1/32 -> 192.168.1.1)
+  const cleanTarget = trimmed.replace(/\/(32|24|16|8)$/, "");
+  const withScheme = /^https?:\/\//i.test(cleanTarget) ? cleanTarget : `https://${cleanTarget}`;
+  try {
+    const url = new URL(withScheme);
+    return url;
+  } catch {
+    // If URL constructor fails on raw IP or custom host, construct clean URL
+    const host = cleanTarget.replace(/^https?:\/\//i, "").split(/[/:]/)[0] || "127.0.0.1";
+    return new URL(`https://${host}`);
   }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error("Only http and https targets are supported by the built-in engine.");
-  }
-  return url;
 }
 
 export async function probe(

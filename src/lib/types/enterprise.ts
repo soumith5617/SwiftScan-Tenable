@@ -9,7 +9,7 @@ export type FindingState = "open" | "fixed" | "accepted" | "false_positive";
 export type AssetKind = "web" | "host" | "api" | "cloud" | "container";
 export type AssetCriticality = "low" | "medium" | "high" | "critical";
 export type ScanStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
-export type ReportFormat = "pdf" | "csv" | "json";
+export type ReportFormat = "pdf" | "csv" | "json" | "html";
 export type ReportKind = "executive" | "technical" | "asset" | "compliance";
 
 export interface UserProfile {

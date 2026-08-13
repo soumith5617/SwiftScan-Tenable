@@ -118,7 +118,7 @@ async function probeHttp(
   host: string,
   port: number,
   timeout: number
-): Promise<{ status: number; serverHeader?: string } | null> {
+): Promise<{ status: number; serverHeader?: string | undefined } | null> {
   const protocols = port === 443 ? ["https", "http"] : ["http", "https"];
 
   for (const proto of protocols) {
@@ -140,7 +140,7 @@ async function probeHttp(
       const serverHeader = res.headers.get("server");
       return {
         status: res.status,
-        serverHeader: serverHeader || undefined,
+        serverHeader: serverHeader ?? undefined,
       };
     } catch {
       // Next protocol

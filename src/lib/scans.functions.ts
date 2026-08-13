@@ -352,25 +352,38 @@ export const runScan = createServerFn({ method: "POST" })
         }
       }
 
+      // Pre-fetch CVE intelligence for all findings in batch
+      const allReportableCves = [...new Set(reportable.flatMap((f) => f.cve_ids ?? []))];
+      const cveIntelMap = new Map<
+        string,
+        { epss: number | null; kev: boolean; cvss: number | null; cwe: string | null }
+      >();
+      if (allReportableCves.length > 0) {
+        for (let i = 0; i < allReportableCves.length; i += 200) {
+          const { data: cveRows } = await supabase
+            .from("cve_cache")
+            .select("cve_id, epss, kev, cvss, cwe")
+            .in("cve_id", allReportableCves.slice(i, i + 200));
+          for (const r of cveRows ?? []) {
+            cveIntelMap.set(r.cve_id, {
+              epss: r.epss,
+              kev: r.kev,
+              cvss: r.cvss,
+              cwe: r.cwe,
+            });
+          }
+        }
+      }
+
       const rows: Record<string, unknown>[] = [];
       for (const raw of reportable) {
         const methods = methodsForFamily(raw.family, /\d+\.\d+/.test(String(raw.evidence ?? "")));
         const f = applyVerificationPolicy(raw, methods);
-        let epss: number | null = null;
-        let kev = false;
-        let cvss: number | null = null;
-        if (f.cve_ids?.length) {
-          const { data: intel } = await supabase
-            .from("cve_cache")
-            .select("epss, kev, cvss, cvss_vector")
-            .in("cve_id", f.cve_ids)
-            .order("cvss", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          epss = intel?.epss ?? null;
-          kev = intel?.kev ?? false;
-          cvss = intel?.cvss ?? null;
-        }
+        const bestIntel = (f.cve_ids ?? []).map((c) => cveIntelMap.get(c)).find(Boolean);
+        const epss = bestIntel?.epss ?? null;
+        const kev = bestIntel?.kev ?? false;
+        const cvss = bestIntel?.cvss ?? null;
+
         const priority = priorityScore({
           cvss,
           severity: f.severity,
@@ -396,7 +409,7 @@ export const runScan = createServerFn({ method: "POST" })
           verifications: f.verifications,
           is_new: true,
           cve_ids: f.cve_ids ?? [],
-          cwe: f.cwe ?? null,
+          cwe: f.cwe ?? bestIntel?.cwe ?? null,
           attack_tactics: f.attack_tactics ?? [],
           port: f.port ?? null,
           service: f.service ?? null,
@@ -515,20 +528,30 @@ export const recomputePriorities = createServerFn({ method: "POST" })
     }
 
     let updated = 0;
-    for (const f of findings) {
-      const best = (f.cve_ids ?? []).map((c) => intel.get(c)).filter(Boolean)[0];
-      const priority = priorityScore({
-        cvss: best?.cvss ?? f.cvss,
-        severity: f.severity,
-        epss: best?.epss ?? null,
-        kev: best?.kev ?? false,
-        confidence: f.confidence,
-      });
-      await supabase
-        .from("findings")
-        .update({ priority, epss: best?.epss ?? null, kev: best?.kev ?? false })
-        .eq("id", f.id);
-      updated++;
-    }
+    const workerPoolLimit = 25;
+    let cursor = 0;
+    const workers = Array.from(
+      { length: Math.min(workerPoolLimit, findings.length) },
+      async () => {
+        while (cursor < findings.length) {
+          const idx = cursor++;
+          const f = findings[idx]!;
+          const best = (f.cve_ids ?? []).map((c) => intel.get(c)).filter(Boolean)[0];
+          const priority = priorityScore({
+            cvss: best?.cvss ?? f.cvss,
+            severity: f.severity,
+            epss: best?.epss ?? null,
+            kev: best?.kev ?? false,
+            confidence: f.confidence,
+          });
+          await supabase
+            .from("findings")
+            .update({ priority, epss: best?.epss ?? null, kev: best?.kev ?? false })
+            .eq("id", f.id);
+          updated++;
+        }
+      },
+    );
+    await Promise.all(workers);
     return { updated };
   });

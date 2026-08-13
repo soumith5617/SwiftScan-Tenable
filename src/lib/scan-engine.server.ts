@@ -647,16 +647,96 @@ export const COMMON_PORTS: {
     category: "web",
     description: "RabbitMQ Management Web UI & HTTP API",
   },
+
+  /* ---------------- Industrial, ICS / SCADA & IoT ---------------- */
+  {
+    port: 102,
+    service: "iso-tsap-s7",
+    category: "infra",
+    riskSeverity: 3,
+    description: "Siemens S7 PLC Communication Protocol (ISO-TSAP)",
+  },
+  {
+    port: 502,
+    service: "modbus-tcp",
+    category: "infra",
+    riskSeverity: 4,
+    description: "Modbus TCP Industrial Control System / SCADA Protocol (unauthenticated commands)",
+  },
+  {
+    port: 1883,
+    service: "mqtt",
+    category: "infra",
+    riskSeverity: 2,
+    description: "MQTT Internet-of-Things (IoT) message broker",
+  },
+  {
+    port: 8883,
+    service: "mqtt-tls",
+    category: "infra",
+    description: "MQTT IoT broker over SSL/TLS",
+  },
+  {
+    port: 47808,
+    service: "bacnet",
+    category: "infra",
+    riskSeverity: 3,
+    description: "BACnet Building Automation and Control Network Protocol",
+  },
+
+  /* ---------------- VoIP, Virtualization & Enterprise Mgmt ---------------- */
+  {
+    port: 5060,
+    service: "sip",
+    category: "infra",
+    description: "Session Initiation Protocol (SIP VoIP)",
+  },
+  {
+    port: 5061,
+    service: "sips",
+    category: "infra",
+    description: "Session Initiation Protocol over TLS (SIPS)",
+  },
+  {
+    port: 8006,
+    service: "proxmox-pve",
+    category: "web",
+    description: "Proxmox VE Hypervisor Web Management Interface",
+  },
+  {
+    port: 8089,
+    service: "splunkd",
+    category: "web",
+    description: "Splunk Management Port & REST API",
+  },
+  {
+    port: 9443,
+    service: "portainer-mgmt",
+    category: "web",
+    description: "Portainer Docker/Kubernetes Management Web UI",
+  },
+  {
+    port: 50000,
+    service: "sap-db2",
+    category: "db",
+    description: "SAP NetWeaver / IBM DB2 Database listener",
+  },
+  {
+    port: 50070,
+    service: "hadoop-namenode",
+    category: "infra",
+    description: "Apache Hadoop HDFS NameNode Web UI",
+  },
 ];
 
 const HTTP_PROBE_PORTS = new Set([
   80, 443, 2082, 2083, 2086, 2087, 2375, 3000, 3128, 4000, 4200, 5000, 5601, 5984, 5985, 5986, 6443,
-  7001, 8000, 8008, 8080, 8081, 8086, 8088, 8090, 8181, 8443, 8500, 8888, 9000, 9001, 9090, 9100,
-  9200, 10000, 10250, 10255, 15672, 28017,
+  7001, 8000, 8006, 8008, 8080, 8081, 8086, 8088, 8089, 8090, 8181, 8443, 8500, 8888, 9000, 9001, 9090, 9100,
+  9200, 9443, 10000, 10250, 10255, 15672, 28017, 50070,
 ]);
 
 const HTTPS_DEFAULT_PORTS = new Set([
-  443, 2083, 2087, 2376, 5986, 6443, 7001, 8443, 10000, 10250,
+  443, 2083, 2087, 2376, 5986, 6443, 7001, 8006, 8443, 9443, 10000, 10250,
 ]);
 
 export async function probePort(
@@ -757,8 +837,8 @@ export async function sweepPorts(
   host: string,
   portList: typeof COMMON_PORTS = COMMON_PORTS,
 ): Promise<DiscoveredPort[]> {
-  const results = await pooled(portList, 20, async (item) => {
-    return probePort(host, item.port, 1800);
+  const results = await pooled(portList, 35, async (item) => {
+    return probePort(host, item.port, 1500);
   });
   return results.filter((p): p is DiscoveredPort => p !== null && p.state === "open");
 }
